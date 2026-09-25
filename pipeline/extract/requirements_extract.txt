@@ -1,0 +1,37 @@
+# --- Extract stage dependencies (pipeline/extract/) ---
+
+# HTTP client. httpx is preferred over requests because it supports both
+# sync and async calls (you'll want async later when fetching hundreds of
+# articles), but requests works fine too if you'd rather start simpler.
+httpx==0.27.2
+# requests==2.32.3          # <- swap in if you prefer sync-only for now
+
+# HTML parsing. PIB's site is old-school ASP.NET WebForms and renders full
+# HTML server-side (no JS rendering needed for the article/listing pages),
+# so BeautifulSoup + lxml is enough — no Selenium/Playwright required here.
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# Automatic retries with exponential backoff for flaky government-server
+# responses (PIB times out / 500s reasonably often).
+tenacity==9.0.0
+
+# Polite rate limiting between requests so you don't hammer a gov.in server.
+ratelimit==2.2.1
+
+# Config/secrets from a .env file (matches the .env in your repo root).
+python-dotenv==1.0.1
+
+# Structured logging (nicer than stdlib logging for a pipeline you'll run on a schedule).
+loguru==0.7.2
+
+# Data validation for the raw record shape before it goes to data/raw/.
+pydantic==2.9.2
+
+# PIB does publish a real RSS feed (found at pib.gov.in/ViewRss.aspx) —
+# use feedparser to read it in rss_fetcher.py.
+feedparser==6.0.11
+
+# --- Only add these if you find you actually need them later ---
+# playwright==1.47.0        # only if a page turns out to need JS rendering
+# fake-useragent==1.5.1     # only if PIB starts blocking on User-Agent

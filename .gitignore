@@ -1,0 +1,39 @@
+# --- Python virtual environment ---
+# Never commit this — it's huge, machine-specific, and anyone cloning
+# the repo rebuilds it themselves from requirements-*.txt.
+.myenv/
+__pycache__/
+*.pyc
+
+# --- Secrets ---
+# Your .env holds API keys / credentials — committing this to a public
+# (or even private) repo means anyone with repo access sees your keys.
+.env
+
+--- Generated data ---
+# data/raw/, data/processed/, and data/.state/ 
+# are all OUTPUT of running
+# the pipeline, not source code — they're regenerable by re-running it,
+# they'll grow large over time, and git is not designed to efficiently
+# store fast-growing daily data files. Once this data lives in R2 and
+# Supabase, there will be nothing here worth committing anyway.
+data/
+
+# --- Leftover debug artifacts ---
+debug_allrel.png
+
+# --- ML model cache ---
+# transformers/torch download and cache the flan-t5 model locally —
+# this can be several hundred MB and is auto-downloaded again on any
+# machine that runs the code, so it doesn't belong in the repo either.
+.cache/
+
+# --- Editor/OS clutter ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Frontend (once it exists) ---
+frontend/node_modules/
+frontend/.next/
