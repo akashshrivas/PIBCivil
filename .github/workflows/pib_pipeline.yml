@@ -18,7 +18,7 @@ on:
     # SAME day again; articles already done are skipped, so it costs nothing extra.
     # - cron: "31 0 * * *"
 
-  workflow_dispatch: # the "Run workflow" button, for manual tests
+  workflow_dispatch:   # the "Run workflow" button, for manual tests
     inputs:
       date:
         description: "Day to fetch, YYYY-MM-DD (leave empty for yesterday in IST)"
@@ -35,7 +35,9 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    # Pinned on purpose: 'ubuntu-latest' is due to switch to Ubuntu 26 on 19 Oct 2026,
+    # and the browser/system packages below are known to work on 24.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     env:
@@ -49,6 +51,21 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      # Fails in seconds, and says exactly WHICH secret is missing or empty
+      # (it never prints the values).
+      - name: Check secrets are set
+        run: |
+          missing=0
+          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET SARVAM_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "MISSING or empty secret: $name"
+              missing=1
+            else
+              echo "ok: $name"
+            fi
+          done
+          exit $missing
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -57,8 +74,8 @@ jobs:
 
       - name: Install dependencies
         run: |
+          pip install boto3 python-dotenv
           pip install -r requirements.txt -r pipeline/extract/requirements_extract.txt
-          pip install boto3
 
       # The day-by-day fetch (--backfill) drives a real browser with Playwright.
       # It needs Chromium, and because headless Chromium gets blocked on
@@ -101,6 +118,21 @@ jobs:
         env:
           DAY: ${{ steps.day.outputs.day }}
         run: xvfb-run -a python pipeline/pipeline.py --backfill "$DAY"
+
+      # If the fetch fails, keep the screenshot of what the browser saw (your
+      # backfill code saves debug_allrel.png). Download it from the "Artifacts"
+      # section at the bottom of the run page.
+      - name: Save debug screenshot (only if the fetch failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshot
+          path: |
+            debug_allrel.png
+            debug_allrel_failed.png
+            pipeline/debug_allrel.png
+            pipeline/debug_allrel_failed.png
+          if-no-files-found: ignore
 
       # Gold (data/exports_sarvam). Articles that already have a summary are skipped.
       - name: Summarize with Sarvam
