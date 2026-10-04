@@ -14,6 +14,19 @@ CONFIRMED (via browser Inspect, 20 Sep 2026):
   - All three use plain numeric values (day: 1-31 not zero-padded,
     month: 1-12, year: e.g. 2026) — matches str(target_date.day/month/year)
     as already used below, no further changes needed there.
+
+FIX (5 Oct 2026) — "Unable to retrieve content because the page is
+navigating":
+  The old code called page.wait_for_load_state("networkidle") right after
+  each select_option(). But the postback navigation starts a moment AFTER
+  the selection, so on a slow connection (GitHub's servers are far from
+  PIB) "networkidle" reported "idle" about the OLD page straight away, the
+  code raced ahead, and page.content() ran in the middle of the real
+  reload. A fixed 1-second pause only hid this on fast connections.
+  Now each selection stamps the current page with a marker and waits for
+  the marker to disappear, which can only happen once the NEW page has
+  loaded — however long that takes. The final values are also checked, and
+  a screenshot is saved if anything still goes wrong.
 """
 
 import re
@@ -22,6 +35,8 @@ from datetime import date, datetime
 
 from bs4 import BeautifulSoup
 from loguru import logger
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -30,6 +45,9 @@ ALL_RELEASES_URL = "https://pib.gov.in/allRel.aspx?reg=48&lang=1"
 DAY_SELECT = "#ContentPlaceHolder1_ddlday"      # confirmed
 MONTH_SELECT = "#ContentPlaceHolder1_ddlMonth"  # confirmed (capital M)
 YEAR_SELECT = "#ContentPlaceHolder1_ddlYear"    # confirmed (capital Y)
+
+# How long to wait for ONE dropdown's page reload (slow links can take a while).
+POSTBACK_TIMEOUT_MS = 60_000
 
 PRID_RE = re.compile(r"PRID=(\d+)", re.IGNORECASE)
 
@@ -41,6 +59,43 @@ class DiscoveredRelease:
     url: str
 
 
+def _select_and_wait_for_reload(page, selector: str, value: str) -> None:
+    """
+    Choose a dropdown value, then wait until the page has REALLY reloaded.
+
+    How it works: set a flag on the current page's `window`, make the
+    selection, and wait for the flag to be gone. A reload throws the old
+    page away, so the flag only disappears once the new page exists.
+    """
+    page.evaluate("() => { window.__awaiting_postback = true; }")
+    page.select_option(selector, value=value)
+
+    try:
+        page.wait_for_function(
+            "() => !window.__awaiting_postback", timeout=POSTBACK_TIMEOUT_MS
+        )
+    except PlaywrightTimeoutError:
+        # No reload happened (e.g. the value was already selected). Carry on;
+        # the final check below still verifies the filter really was applied.
+        logger.warning(f"{selector}: no page reload after selecting {value!r} — continuing")
+
+    page.wait_for_load_state("networkidle")
+    page.wait_for_selector(selector, state="visible", timeout=15000)
+
+
+def _content_when_stable(page, attempts: int = 10) -> str:
+    """page.content(), retried if the page is still mid-navigation."""
+    last_error = None
+    for _ in range(attempts):
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+            return page.content()
+        except PlaywrightError as e:  # includes timeouts
+            last_error = e
+            page.wait_for_timeout(1000)
+    raise last_error
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=3, max=20))
 def backfill_day(target_date: date, headless: bool = True) -> list[DiscoveredRelease]:
     """Drive allRel.aspx's day/month/year dropdowns for one date and return every PRID found."""
@@ -49,40 +104,52 @@ def backfill_day(target_date: date, headless: bool = True) -> list[DiscoveredRel
             headless=headless,
             args=["--disable-blink-features=AutomationControlled"],
         )
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800},
-        )
-        page = context.new_page()
-        page.goto(ALL_RELEASES_URL, wait_until="networkidle")
-        page.screenshot(path="debug_allrel.png", full_page=True)
-        page.wait_for_selector(DAY_SELECT, state="visible", timeout=15000)
+        page = None
+        try:
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
+            page.goto(ALL_RELEASES_URL, wait_until="networkidle")
+            page.screenshot(path="debug_allrel.png", full_page=True)
+            page.wait_for_selector(DAY_SELECT, state="visible", timeout=15000)
 
-        # Each select triggers its own postback (full page reload), so wait
-        # for the page to settle after EACH one before touching the next —
-        # otherwise the next select's element may have already been replaced
-        # by the postback and Playwright will fail to find it.
-        page.select_option(DAY_SELECT, value=str(target_date.day))
-        page.wait_for_load_state("networkidle")
+            # Each select triggers its own postback (full page reload), so wait
+            # for the page to REALLY reload after EACH one before touching the
+            # next — otherwise the next select's element may have been replaced
+            # by the postback and Playwright will fail to find it.
+            _select_and_wait_for_reload(page, DAY_SELECT, str(target_date.day))
+            _select_and_wait_for_reload(page, MONTH_SELECT, str(target_date.month))
+            _select_and_wait_for_reload(page, YEAR_SELECT, str(target_date.year))
 
-        page.select_option(MONTH_SELECT, value=str(target_date.month))
-        page.wait_for_load_state("networkidle")
+            # Make sure the page really shows the date we asked for.
+            expected = (str(target_date.day), str(target_date.month), str(target_date.year))
+            actual = (
+                page.input_value(DAY_SELECT),
+                page.input_value(MONTH_SELECT),
+                page.input_value(YEAR_SELECT),
+            )
+            if actual != expected:
+                raise RuntimeError(
+                    f"dropdowns show day/month/year {actual}, expected {expected} — filter not applied"
+                )
 
-        page.select_option(YEAR_SELECT, value=str(target_date.year))
-        page.wait_for_load_state("networkidle")
+            html = _content_when_stable(page)
 
-        # One more short pause here on purpose: networkidle can report
-        # "settled" a moment before a trailing background request actually
-        # finishes, and page.content() fails outright if called while the
-        # page is still mid-navigation. A brief fixed wait is simpler and
-        # more reliable here than trying to detect that exact moment.
-        page.wait_for_timeout(1000)
-
-        html = page.content()
-        browser.close()
+        except Exception as e:
+            logger.warning(f"Backfill attempt for {target_date} failed: {e}")
+            if page is not None:
+                try:
+                    page.screenshot(path="debug_allrel_failed.png", full_page=True)
+                except Exception:
+                    pass
+            raise
+        finally:
+            browser.close()
 
     soup = BeautifulSoup(html, "lxml")
     found: dict[str, DiscoveredRelease] = {}
