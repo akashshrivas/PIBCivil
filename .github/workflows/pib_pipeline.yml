@@ -1,0 +1,112 @@
+# Save as: .github/workflows/pipeline.yml
+#
+# Every night at 00:01 IST this fetches the PREVIOUS day's PIB releases,
+# cleans them, summarizes them with Sarvam, and saves the three layers in R2:
+#   bronze (raw)  ->  silver (cleaned)  ->  gold (summaries)
+
+name: PIB pipeline
+
+on:
+  schedule:
+    # GitHub cron is always UTC. 00:01 IST = 18:31 UTC on the evening before.
+    # GitHub may start the run a few minutes late; that is normal and harmless,
+    # because the day to fetch is worked out when the run starts (see below).
+    - cron: "31 18 * * *"
+
+    # OPTIONAL catch-up: PIB sometimes posts a few of yesterday's releases after
+    # midnight. Remove the "#" below to run again at 06:01 IST. It fetches the
+    # SAME day again; articles already done are skipped, so it costs nothing extra.
+    # - cron: "31 0 * * *"
+
+  workflow_dispatch: # the "Run workflow" button, for manual tests
+    inputs:
+      date:
+        description: "Day to fetch, YYYY-MM-DD (leave empty for yesterday in IST)"
+        required: false
+        default: ""
+
+# Never let two runs overlap: they would fight over the same state files.
+concurrency:
+  group: pib-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r pipeline/extract/requirements_extract.txt
+          pip install boto3
+
+      # The day-by-day fetch (--backfill) drives a real browser with Playwright.
+      # It needs Chromium, and because headless Chromium gets blocked on
+      # allRel.aspx, it runs "visible" inside a virtual screen (xvfb) -- the
+      # Linux fix described in backfill_fetcher.py.
+      - name: Install browser (Playwright) and virtual screen
+        run: |
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y xvfb
+
+      # The runner's clock is UTC, but "yesterday" must be yesterday in India.
+      # At 00:01 IST the UTC date is still the OLD day, so asking the pipeline
+      # for "yesterday" by UTC would fetch the wrong day. We compute it in IST.
+      - name: Work out which day to fetch
+        id: day
+        env:
+          INPUT_DATE: ${{ github.event.inputs.date }}
+        run: |
+          if [ -n "$INPUT_DATE" ]; then
+            if [[ ! "$INPUT_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              echo "Date must look like 2026-10-05, got: $INPUT_DATE"
+              exit 1
+            fi
+            DAY="$INPUT_DATE"
+          else
+            DAY=$(TZ=Asia/Kolkata date -d "yesterday" +%F)
+          fi
+          echo "Fetching PIB releases for $DAY"
+          echo "day=$DAY" >> "$GITHUB_OUTPUT"
+
+      # The runner starts empty. Pull the dedup state and recent days from R2 so
+      # finished articles are not fetched or summarized (and paid for) again.
+      - name: Restore data from R2
+        run: python scripts/r2_sync.py download --since-days 7
+
+      # Bronze (data/raw) and Silver (data/processed) for that one day.
+      # Run `python pipeline/pipeline.py --help` locally to confirm what
+      # --backfill does, and change this line if your command is different.
+      - name: Fetch, parse and clean
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+        run: xvfb-run -a python pipeline/pipeline.py --backfill "$DAY"
+
+      # Gold (data/exports_sarvam). Articles that already have a summary are skipped.
+      - name: Summarize with Sarvam
+        run: python pipeline/summarize/sarvam_summarizer.py
+
+      # always(): even if a step above fails, keep what was produced.
+      - name: Upload layers to R2
+        if: always()
+        run: python scripts/r2_sync.py upload
