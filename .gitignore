@@ -4,6 +4,7 @@
 .myenv/
 __pycache__/
 *.pyc
+.venv2/
 
 # --- Secrets ---
 # Your .env holds API keys / credentials — committing this to a public
@@ -37,3 +38,4 @@ Thumbs.db
 # --- Frontend (once it exists) ---
 frontend/node_modules/
 frontend/.next/
+docs
