@@ -72,11 +72,18 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+       - name: Install dependencies
         run: |
+          # Packages the R2 upload/download script needs
+          # (boto3 talks to Cloudflare R2, python-dotenv loads .env files)
           pip install boto3 python-dotenv
+
+          # Packages listed in your two requirements files
           pip install -r requirements.txt -r pipeline/extract/requirements_extract.txt
 
+          # The Sarvam AI SDK, needed by pipeline/summarize/sarvam_summarizer.py.
+          # The pip name "sarvamai" matches the import: from sarvamai import SarvamAI
+          pip install sarvamai
       # The day-by-day fetch (--backfill) drives a real browser with Playwright.
       # It needs Chromium, and because headless Chromium gets blocked on
       # allRel.aspx, it runs "visible" inside a virtual screen (xvfb) -- the
