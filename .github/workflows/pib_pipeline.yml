@@ -108,7 +108,7 @@ jobs:
             fi
             DAY="$INPUT_DATE"
           else
-            DAY=$(TZ=Asia/Kolkata date -d "yesterday" +%F)
+            DAY=$(TZ=Asia/Kolkata date  +%F)
           fi
           echo "Fetching PIB releases for $DAY"
           echo "day=$DAY" >> "$GITHUB_OUTPUT"
