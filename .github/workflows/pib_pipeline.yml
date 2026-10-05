@@ -1,22 +1,23 @@
-# Save as: .github/workflows/pipeline.yml
+# Save as: .github/workflows/pipeline.yml   (replace the contents of your existing workflow file)
 #
-# Every night at 00:01 IST this fetches the PREVIOUS day's PIB releases,
-# cleans them, summarizes them with Sarvam, and saves the three layers in R2:
+# Every night this fetches the PREVIOUS day's PIB releases, cleans them,
+# summarizes them with Sarvam, and saves the three layers in R2:
 #   bronze (raw)  ->  silver (cleaned)  ->  gold (summaries)
+#
+# It is scheduled THREE times before 05:00 IST. The first run that finishes
+# successfully writes a "done" marker for that day (in R2, under _state/done/);
+# the other runs see the marker and stop within about a minute. If a run fails,
+# or GitHub skips or delays it, the next one tries again.
 
 name: PIB pipeline
 
 on:
   schedule:
-    # GitHub cron is always UTC. 00:01 IST = 18:31 UTC on the evening before.
-    # GitHub may start the run a few minutes late; that is normal and harmless,
-    # because the day to fetch is worked out when the run starts (see below).
-    - cron: "31 18 * * *"
-
-    # OPTIONAL catch-up: PIB sometimes posts a few of yesterday's releases after
-    # midnight. Remove the "#" below to run again at 06:01 IST. It fetches the
-    # SAME day again; articles already done are skipped, so it costs nothing extra.
-    # - cron: "31 0 * * *"
+    # GitHub cron is always UTC (IST = UTC + 5:30). All three are on the same UTC
+    # evening, so all three work out the same "yesterday in IST" day.
+    - cron: "31 18 * * *"   # 00:01 IST  first attempt
+    - cron: "11 20 * * *"   # 01:41 IST  retry if the first failed or never started
+    - cron: "41 21 * * *"   # 03:11 IST  last retry (still well before 05:00 IST)
 
   workflow_dispatch:   # the "Run workflow" button, for manual tests
     inputs:
@@ -72,26 +73,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-       - name: Install dependencies
-        run: |
-          # Packages the R2 upload/download script needs
-          # (boto3 talks to Cloudflare R2, python-dotenv loads .env files)
-          pip install boto3 python-dotenv
-
-          # Packages listed in your two requirements files
-          pip install -r requirements.txt -r pipeline/extract/requirements_extract.txt
-
-          # The Sarvam AI SDK, needed by pipeline/summarize/sarvam_summarizer.py.
-          # The pip name "sarvamai" matches the import: from sarvamai import SarvamAI
-          pip install sarvamai
-      # The day-by-day fetch (--backfill) drives a real browser with Playwright.
-      # It needs Chromium, and because headless Chromium gets blocked on
-      # allRel.aspx, it runs "visible" inside a virtual screen (xvfb) -- the
-      # Linux fix described in backfill_fetcher.py.
-      - name: Install browser (Playwright) and virtual screen
-        run: |
-          python -m playwright install --with-deps chromium
-          sudo apt-get install -y xvfb
+      # Only what r2_sync.py needs. The big installs come later, and only if
+      # there is real work to do (so a "day already done" run is quick).
+      - name: Install R2 tools
+        run: pip install boto3 python-dotenv
 
       # The runner's clock is UTC, but "yesterday" must be yesterday in India.
       # At 00:01 IST the UTC date is still the OLD day, so asking the pipeline
@@ -108,44 +93,80 @@ jobs:
             fi
             DAY="$INPUT_DATE"
           else
-            DAY=$(TZ=Asia/Kolkata date  +%F)
+            DAY=$(TZ=Asia/Kolkata date -d "yesterday" +%F)
           fi
           echo "Fetching PIB releases for $DAY"
           echo "day=$DAY" >> "$GITHUB_OUTPUT"
 
-      # The runner starts empty. Pull the dedup state and recent days from R2 so
-      # finished articles are not fetched or summarized (and paid for) again.
+      # The runner starts empty. Pull the dedup state (including the "done"
+      # markers) and recent days from R2.
       - name: Restore data from R2
         run: python scripts/r2_sync.py download --since-days 7
 
+      # Scheduled runs stop here if an earlier run already finished this day.
+      # Manual runs (the button) always go ahead, so you can redo a day on purpose.
+      - name: Check if this day is already done
+        id: check
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "schedule" ] && [ -f "data/.state/done/$DAY.txt" ]; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+            echo "$DAY was already completed by an earlier run. Nothing to do."
+          else
+            echo "done=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.done != 'true'
+        run: pip install sarvamai -r requirements.txt -r pipeline/extract/requirements_extract.txt
+
+      # The day-by-day fetch (--backfill) drives a real browser with Playwright.
+      # It needs Chromium, and because headless Chromium gets blocked on
+      # allRel.aspx, it runs "visible" inside a virtual screen (xvfb) -- the
+      # Linux fix described in backfill_fetcher.py.
+      - name: Install browser (Playwright) and virtual screen
+        if: steps.check.outputs.done != 'true'
+        run: |
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y xvfb
+
       # Bronze (data/raw) and Silver (data/processed) for that one day.
-      # Run `python pipeline/pipeline.py --help` locally to confirm what
-      # --backfill does, and change this line if your command is different.
       - name: Fetch, parse and clean
+        if: steps.check.outputs.done != 'true'
         env:
           DAY: ${{ steps.day.outputs.day }}
         run: xvfb-run -a python pipeline/pipeline.py --backfill "$DAY"
 
-      # If the fetch fails, keep the screenshot of what the browser saw (your
-      # backfill code saves debug_allrel.png). Download it from the "Artifacts"
-      # section at the bottom of the run page.
-      - name: Save debug screenshot (only if the fetch failed)
+      # If the fetch fails, keep the screenshots of what the browser saw.
+      # Download them from the "Artifacts" section at the bottom of the run page.
+      - name: Save debug screenshots (only if something failed)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-screenshot
+          name: debug-screenshots
           path: |
-            debug_allrel.png
-            debug_allrel_failed.png
-            pipeline/debug_allrel.png
-            pipeline/debug_allrel_failed.png
+            debug_*.png
+            pipeline/debug_*.png
           if-no-files-found: ignore
 
-      # Gold (data/exports_sarvam). Articles that already have a summary are skipped.
+      # Gold (data/exports). Articles that already have a summary are skipped.
       - name: Summarize with Sarvam
+        if: steps.check.outputs.done != 'true'
         run: python pipeline/summarize/sarvam_summarizer.py
+
+      # Only reached if the fetch AND the summaries both succeeded. This is what
+      # tells the later scheduled runs of the night to stand down.
+      - name: Mark this day as done
+        if: steps.check.outputs.done != 'true'
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+        run: |
+          mkdir -p data/.state/done
+          echo "completed $(date -u +%FT%TZ) by run ${{ github.run_id }}" > "data/.state/done/$DAY.txt"
 
       # always(): even if a step above fails, keep what was produced.
       - name: Upload layers to R2
-        if: always()
+        if: always() && steps.check.outputs.done != 'true'
         run: python scripts/r2_sync.py upload
