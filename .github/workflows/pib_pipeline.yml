@@ -4,10 +4,17 @@
 # summarizes them with Sarvam, and saves the three layers in R2:
 #   bronze (raw)  ->  silver (cleaned)  ->  gold (summaries)
 #
-# It is scheduled THREE times before 05:00 IST. The first run that finishes
-# successfully writes a "done" marker for that day (in R2, under _state/done/);
-# the other runs see the marker and stop within about a minute. If a run fails,
-# or GitHub skips or delays it, the next one tries again.
+# HOW IT IS STARTED
+# 1. PRIMARY: an external scheduler (cron-job.org) calls GitHub's
+#    workflow_dispatch API at exactly 00:15, 02:00 and 03:00 IST.
+#    GitHub's own `schedule:` queue was running ~3.5-5 hours late every night,
+#    so the clock is kept OUTSIDE GitHub.
+# 2. FALLBACK: the `schedule:` block below still fires (late). It costs
+#    about 30 seconds when the day is already done, so it is harmless.
+#
+# The first run that finishes successfully writes a "done" marker for that day
+# (in R2, under _state/done/); every other run for that day sees the marker
+# and stops within about a minute. If a run fails, the next trigger tries again.
 
 name: PIB pipeline
 
@@ -15,11 +22,12 @@ on:
   schedule:
     # GitHub cron is always UTC (IST = UTC + 5:30). All three are on the same UTC
     # evening, so all three work out the same "yesterday in IST" day.
-    - cron: "31 18 * * *"   # 00:01 IST  first attempt
-    - cron: "11 20 * * *"   # 01:41 IST  retry if the first failed or never started
-    - cron: "41 21 * * *"   # 03:11 IST  last retry (still well before 05:00 IST)
+    # Minutes are kept off the top of the hour on purpose (GitHub is busiest then).
+    - cron: "45 18 * * *"   # 00:15 IST  first attempt
+    - cron: "37 20 * * *"   # 02:07 IST  retry
+    - cron: "37 21 * * *"   # 03:07 IST  last retry
 
-  workflow_dispatch:   # the "Run workflow" button, for manual tests
+  workflow_dispatch:   # the "Run workflow" button AND the external cron-job.org calls
     inputs:
       date:
         description: "Day to fetch, YYYY-MM-DD (leave empty for yesterday in IST)"
@@ -79,7 +87,7 @@ jobs:
         run: pip install boto3 python-dotenv
 
       # The runner's clock is UTC, but "yesterday" must be yesterday in India.
-      # At 00:01 IST the UTC date is still the OLD day, so asking the pipeline
+      # At 00:15 IST the UTC date is still the OLD day, so asking the pipeline
       # for "yesterday" by UTC would fetch the wrong day. We compute it in IST.
       - name: Work out which day to fetch
         id: day
@@ -103,15 +111,20 @@ jobs:
       - name: Restore data from R2
         run: python scripts/r2_sync.py download --since-days 7
 
-      # Scheduled runs stop here if an earlier run already finished this day.
-      # Manual runs (the button) always go ahead, so you can redo a day on purpose.
+      # CHANGED: this used to test `github.event_name == "schedule"`. But an
+      # external trigger (cron-job.org) arrives as a workflow_dispatch event,
+      # the same type as the manual button, so every external run would have
+      # ignored the done-marker and reprocessed the whole day. The real signal
+      # of intent is whether a SPECIFIC DATE was typed in:
+      #   no date given  -> routine nightly attempt -> respect the done-marker
+      #   date given     -> deliberate redo of that day -> always run
       - name: Check if this day is already done
         id: check
         env:
           DAY: ${{ steps.day.outputs.day }}
-          EVENT: ${{ github.event_name }}
+          INPUT_DATE: ${{ github.event.inputs.date }}
         run: |
-          if [ "$EVENT" = "schedule" ] && [ -f "data/.state/done/$DAY.txt" ]; then
+          if [ -z "$INPUT_DATE" ] && [ -f "data/.state/done/$DAY.txt" ]; then
             echo "done=true" >> "$GITHUB_OUTPUT"
             echo "$DAY was already completed by an earlier run. Nothing to do."
           else
@@ -157,7 +170,7 @@ jobs:
         run: python pipeline/summarize/sarvam_summarizer.py
 
       # Only reached if the fetch AND the summaries both succeeded. This is what
-      # tells the later scheduled runs of the night to stand down.
+      # tells the later triggers of the night to stand down.
       - name: Mark this day as done
         if: steps.check.outputs.done != 'true'
         env:
