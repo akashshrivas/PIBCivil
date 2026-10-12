@@ -1,5 +1,7 @@
 """
 backfill_range.py
+# cd pipeline
+# python -m backfill_range --start 2026-06-01 --end 2026-06-30
 ==================
 
 WHAT THIS FILE DOES:
