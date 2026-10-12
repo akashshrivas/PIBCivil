@@ -73,8 +73,6 @@ supabase-functions==2.32.0
 sympy==1.13.1
 tenacity==9.0.0
 threadpoolctl==3.7.0
-tokenizers==0.23.2
-torch==2.6.0
 tqdm==4.70.1
 transformers==5.17.0
 typer==0.27.2
