@@ -4,6 +4,7 @@ import SearchBar from "@/components/SearchBar";
 import FilterBar from "@/components/FilterBar";
 import Hero from "@/components/Hero";
 import ArticleCard from "@/components/ArticleCard";
+import MobileMenuButton from "@/components/MobileMenuButton"; // NEW: hamburger button for phones
 import { getArticles, getMinistries } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +58,9 @@ export default async function Home({ searchParams: searchParamsPromise }: HomePr
 
       <main className="main">
         <div className="topbar">
+          {/* NEW: hamburger button. Hidden on desktop, visible on screens 900px wide or narrower. */}
+          <MobileMenuButton />
+
           <Suspense fallback={<div className="search-field">Loading search…</div>}>
             <SearchBar />
           </Suspense>
