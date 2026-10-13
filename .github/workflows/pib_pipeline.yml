@@ -133,7 +133,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.check.outputs.done != 'true'
-        run: pip install sarvamai -r requirements.txt -r pipeline/extract/requirements_extract.txt
+        run: pip install sarvamai -r requirements.txt 
 
       # The day-by-day fetch (--backfill) drives a real browser with Playwright.
       # It needs Chromium, and because headless Chromium gets blocked on
