@@ -131,6 +131,30 @@ jobs:
             echo "done=false" >> "$GITHUB_OUTPUT"
           fi
 
+
+      
+      - name: Diagnose dependency conflict
+        if: steps.check.outputs.done != 'true'
+        run: |
+          echo "=== Commit being executed ==="
+          git rev-parse HEAD
+
+          echo "=== Current root requirements ==="
+          grep -n -i pydantic requirements.txt || true
+
+          echo "=== Requirements and configuration files ==="
+          find . -type f \( \
+            -name '*requirements*.txt' -o \
+            -name 'constraints*.txt' -o \
+            -name 'pyproject.toml' -o \
+            -name 'setup.cfg' \
+          \) -not -path './.git/*' -print
+
+          echo "=== Explicit Pydantic version pins ==="
+          grep -RniE 'pydantic[[:space:]]*==[[:space:]]*(2\.9\.2|2\.13\.5)' . \
+            --exclude-dir=.git --exclude-dir=.venv || true
+
+
       - name: Install dependencies
         if: steps.check.outputs.done != 'true'
         run: pip install sarvamai -r requirements.txt 
