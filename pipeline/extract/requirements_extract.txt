@@ -26,7 +26,6 @@ python-dotenv==1.0.1
 loguru==0.7.2
 
 # Data validation for the raw record shape before it goes to data/raw/.
-pydantic==2.9.2
 
 # PIB does publish a real RSS feed (found at pib.gov.in/ViewRss.aspx) —
 # use feedparser to read it in rss_fetcher.py.
