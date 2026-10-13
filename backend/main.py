@@ -10,7 +10,9 @@ app = FastAPI(title="PIB Civil API")
 # page rendering on the server -- never hit CORS at all.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # add your deployed frontend URL later
+    allow_origins=["http://localhost:3000",
+    "https://pib-civil.vercel.app"               
+                   ],  # add your deployed frontend URL later
     allow_methods=["GET"],
     allow_headers=["*"],
 )
