@@ -47,16 +47,21 @@ export default function ArticleCard({ article }: ArticleCardProps) {
         </svg>
       </div>
 
-      <h2 className="article-title">{article.title}</h2>
-      {article.ministry && (
-        <div className="article-ministry">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 21h18" />
-            <path d="M5 21V7l7-4 7 4v14" />
-          </svg>
-          {article.ministry}
-        </div>
-      )}
+      <div className="article-body">
+        <h2 className="article-title">{article.title}</h2>
+        {article.ministry && (
+          <div className="article-ministry">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 21h18" />
+              <path d="M5 21V7l7-4 7 4v14" />
+            </svg>
+            {article.ministry}
+          </div>
+        )}
+        {article.summary_preview && (
+          <p className="article-preview">{article.summary_preview}</p>
+        )}
+      </div>
 
       {article.keywords.length > 0 && (
         <div className="chip-row">

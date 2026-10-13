@@ -1,11 +1,26 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import DateRangePicker from "./DateRangePicker";
+import Dropdown from "./Dropdown";
 
 interface FilterBarProps {
   ministries: string[];
   total: number;
 }
+
+const MINISTRY_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 21h18" />
+    <path d="M5 21V7l7-4 7 4v14" />
+  </svg>
+);
+
+const SORT_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 6h18M6 12h12M10 18h4" />
+  </svg>
+);
 
 export default function FilterBar({ ministries, total }: FilterBarProps) {
   const router = useRouter();
@@ -40,63 +55,39 @@ export default function FilterBar({ ministries, total }: FilterBarProps) {
         All ({total})
       </button>
 
-      <label className="filter-field filter-field-ministry">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 21h18" />
-          <path d="M5 21V7l7-4 7 4v14" />
-        </svg>
-        <select
-          value={activeMinistry}
-          onChange={(e) => updateParam("ministry", e.target.value)}
-          aria-label="Filter by ministry"
-        >
-          <option value="">Ministry</option>
-          {ministries.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Dropdown
+        icon={MINISTRY_ICON}
+        value={activeMinistry}
+        placeholder="Ministry"
+        options={ministries.map((m) => ({ value: m, label: m }))}
+        onChange={(v) => updateParam("ministry", v)}
+      />
 
-      <label className="filter-field filter-field-range">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
-        <input
-          type="date"
-          value={after}
-          onChange={(e) => updateParam("published_after", e.target.value)}
-          aria-label="From date"
-        />
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <polyline points="12 5 19 12 12 19" />
-        </svg>
-        <input
-          type="date"
-          value={before}
-          onChange={(e) => updateParam("published_before", e.target.value)}
-          aria-label="To date"
-        />
-      </label>
+      <DateRangePicker
+        after={after}
+        before={before}
+        onChange={(newAfter, newBefore) => {
+          const params = new URLSearchParams(searchParams.toString());
+          if (newAfter) params.set("published_after", newAfter);
+          else params.delete("published_after");
+          if (newBefore) params.set("published_before", newBefore);
+          else params.delete("published_before");
+          params.delete("offset");
+          router.push(`/?${params.toString()}`);
+        }}
+      />
 
-      <label className="filter-field">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 6h18M6 12h12M10 18h4" />
-        </svg>
-        <select
-          value={order}
-          onChange={(e) => updateParam("order", e.target.value)}
-          aria-label="Sort order"
-        >
-          <option value="newest">Latest first</option>
-          <option value="oldest">Oldest first</option>
-        </select>
-      </label>
+      <Dropdown
+        icon={SORT_ICON}
+        value={order}
+        placeholder="Latest first"
+        clearable={false}
+        options={[
+          { value: "newest", label: "Latest first" },
+          { value: "oldest", label: "Oldest first" },
+        ]}
+        onChange={(v) => updateParam("order", v)}
+      />
 
       <button
         type="button"

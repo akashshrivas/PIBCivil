@@ -29,6 +29,7 @@ class ArticleListItem(BaseModel):
     published_on: date
     url: Optional[str] = None
     keywords: List[str] = []
+    summary_preview: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: dict) -> "ArticleListItem":
@@ -36,6 +37,7 @@ class ArticleListItem(BaseModel):
         # take the first summary's keywords, capped to a few for a card chip row.
         summaries = row.get("article_summaries") or []
         keywords = summaries[0]["keywords"] if summaries else []
+        summary_text = summaries[0]["summary"] if summaries else None
 
         return cls(
             id=row["id"],
@@ -45,6 +47,7 @@ class ArticleListItem(BaseModel):
             published_on=row["published_on"],
             url=row.get("url"),
             keywords=keywords[:3],
+            summary_preview=summary_text,
         )
 
 

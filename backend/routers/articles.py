@@ -37,7 +37,7 @@ def list_articles(
     # pulls just the keywords -- not the whole summary -- so the list
     # endpoint stays light while still giving the grid its chip row.
     query = client.table("articles").select(
-        "*, article_summaries(keywords)", count="exact"
+        "*, article_summaries(summary, keywords)", count="exact"
     )
 
     if ministry:

@@ -11,6 +11,7 @@ export interface ArticleListItem {
   published_on: string; // ISO date, e.g. "2026-10-03"
   url: string | null;
   keywords: string[];
+  summary_preview: string | null;
 }
 
 export interface ArticleSummary {
