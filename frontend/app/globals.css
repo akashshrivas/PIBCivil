@@ -192,22 +192,6 @@ input {
   flex: 1;
   font-size: 13.5px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-signout {
-  border: none;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  padding: 4px;
-  flex: 0 0 auto;
-}
-
-.sidebar-signout:hover {
-  color: var(--accent);
 }
 
 .avatar {
@@ -229,6 +213,71 @@ input {
   height: 26px;
   flex: 0 0 26px;
   font-size: 12px;
+}
+
+/* ---------- Mobile menu (sidebar becomes a slide-in drawer) ---------- */
+
+/* Hamburger button and dark backdrop: hidden on desktop. */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* Show the hamburger button. */
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  /* Pull the sidebar out of the page flow and park it off-screen to the left. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60; /* above cards, dropdowns and modals */
+    width: 260px;
+    flex: none;
+    height: 100vh; /* fallback for older browsers */
+    height: 100dvh; /* real visible height on phones (excludes the address bar) */
+    background: var(--surface);
+    transform: translateX(-100%); /* hidden */
+    transition: transform 0.2s ease;
+    /* keeps Dark mode / Account clear of the iPhone home bar */
+    padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* When the menu is open (class set by MobileMenuButton), slide it in. */
+  body.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Dim the page behind the open menu; tapping it closes the menu. */
+  body.sidebar-open .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  /* The Cmd+K hint makes no sense on a phone. */
+  .search-kbd {
+    display: none;
+  }
 }
 
 /* ---------- Main ---------- */
@@ -461,23 +510,30 @@ input {
   font-weight: 600;
 }
 
-/* ---------- Date range picker ---------- */
+/* ---------- Date range picker (single month, mobile friendly) ---------- */
 
 .date-picker {
   position: relative;
 }
 
+/* Desktop: small popup under the button. */
 .date-picker-popover {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
   z-index: 40;
+  width: 320px;
+  max-width: calc(100vw - 24px);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: 0 16px 40px rgba(20, 16, 50, 0.18);
   padding: 18px;
-  width: max-content;
+}
+
+/* The backdrop is only used on mobile. */
+.date-picker-backdrop {
+  display: none;
 }
 
 .date-picker-tabs {
@@ -485,7 +541,7 @@ input {
   background: var(--bg);
   border-radius: 999px;
   padding: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .date-picker-tab {
@@ -505,36 +561,12 @@ input {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
-.date-picker-months {
-  display: flex;
-  align-items: flex-start;
-  gap: 28px;
-}
-
-.date-picker-nav {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+/* Header row: [<]  June 2026  [>] */
+.date-picker-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.date-picker-nav:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.date-picker-month {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
 .date-picker-month-title {
@@ -543,31 +575,50 @@ input {
   text-align: center;
 }
 
-.date-picker-weekdays {
+.date-picker-nav {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 50%;
+  width: 36px; /* big enough for a thumb */
+  height: 36px;
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.date-picker-nav:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Weekday letters and day cells: 7 equal columns that shrink to fit any screen. */
+.date-picker-weekdays,
+.date-picker-grid {
   display: grid;
-  grid-template-columns: repeat(7, 32px);
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.date-picker-weekdays {
   text-align: center;
   font-size: 11px;
   color: var(--text-faint);
   font-weight: 600;
-}
-
-.date-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 32px);
-  grid-auto-rows: 32px;
-  gap: 2px;
+  padding-bottom: 6px;
 }
 
 .date-picker-day {
-  width: 32px;
-  height: 32px;
+  aspect-ratio: 1 / 1; /* always a square, so it scales with the screen */
+  min-height: 38px; /* minimum tap size */
   border: none;
   background: none;
   border-radius: 50%;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .date-picker-day:hover {
@@ -576,7 +627,7 @@ input {
 
 .date-picker-day.in-range {
   background: var(--accent-soft);
-  border-radius: 0;
+  border-radius: 0; /* flat edges so the range looks like a band */
 }
 
 .date-picker-day.selected {
@@ -586,8 +637,8 @@ input {
 }
 
 .date-picker-footer {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
@@ -601,13 +652,39 @@ input {
   text-decoration: underline;
   color: var(--text);
   cursor: pointer;
+  padding: 8px;
 }
 
 .date-picker-presets {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: 420px;
+}
+
+/* Mobile: the popup becomes a bottom sheet. */
+@media (max-width: 640px) {
+  .date-picker-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .date-picker-popover {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 46;
+    width: 100%;
+    max-width: none;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ---------- Card grid ---------- */
@@ -624,18 +701,30 @@ input {
   }
 }
 
+/* NOTE: the old ".sidebar { display: none; }" rule was removed from here.
+   On small screens the sidebar is now a slide-in drawer (see "Mobile menu" above). */
 @media (max-width: 900px) {
   .card-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .sidebar {
-    display: none;
   }
 }
 
 @media (max-width: 600px) {
   .card-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Tighter spacing and a smaller headline on phones. */
+  .main {
+    padding: 16px 14px 20px;
+  }
+
+  .hero {
+    padding: 20px 18px;
+  }
+
+  .hero-headline {
+    font-size: 26px;
   }
 }
 
@@ -786,165 +875,6 @@ input {
 .pagination .disabled {
   color: var(--text-faint);
   pointer-events: none;
-}
-
-/* ---------- Auth page ---------- */
-
-.auth-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--accent-soft), var(--bg));
-  padding: 24px;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 400px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 36px 32px;
-  box-shadow: 0 24px 60px rgba(20, 16, 50, 0.14);
-  display: flex;
-  flex-direction: column;
-}
-
-.auth-logo {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 17px;
-  font-weight: 800;
-  margin-bottom: 22px;
-}
-
-.auth-title {
-  font-size: 23px;
-  font-weight: 800;
-  margin: 0 0 4px;
-  letter-spacing: -0.01em;
-}
-
-.auth-subtitle {
-  font-size: 13.5px;
-  color: var(--text-muted);
-  margin: 0 0 22px;
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0;
-  font-size: 12px;
-  color: var(--text-faint);
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.auth-input {
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 13.5px;
-}
-
-.auth-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.auth-button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-
-.auth-button:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.auth-button-google {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.auth-hint {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.auth-link-button {
-  background: none;
-  border: none;
-  font-size: 12.5px;
-  color: var(--accent);
-  text-decoration: underline;
-  cursor: pointer;
-  align-self: flex-start;
-  padding: 0;
-}
-
-.auth-error {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #fbe4e4;
-  color: #a33;
-  font-size: 12.5px;
-}
-
-[data-theme="dark"] .auth-error {
-  background: #3a1f22;
-  color: #f0a3a3;
-}
-
-.auth-success {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--accent-soft);
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.auth-guest-link {
-  text-align: center;
-  margin-top: 22px;
-  font-size: 13px;
-  color: var(--text-muted);
-  text-decoration: underline;
 }
 
 /* ---------- Article modal ---------- */
