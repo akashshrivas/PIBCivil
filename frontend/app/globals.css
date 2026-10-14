@@ -192,6 +192,22 @@ input {
   flex: 1;
   font-size: 13.5px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-signout {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  flex: 0 0 auto;
+}
+
+.sidebar-signout:hover {
+  color: var(--accent);
 }
 
 .avatar {
@@ -237,6 +253,7 @@ input {
 }
 
 @media (max-width: 900px) {
+
   /* Show the hamburger button. */
   .mobile-menu-btn {
     display: flex;
@@ -248,13 +265,17 @@ input {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 60; /* above cards, dropdowns and modals */
+    z-index: 60;
+    /* above cards, dropdowns and modals */
     width: 260px;
     flex: none;
-    height: 100vh; /* fallback for older browsers */
-    height: 100dvh; /* real visible height on phones (excludes the address bar) */
+    height: 100vh;
+    /* fallback for older browsers */
+    height: 100dvh;
+    /* real visible height on phones (excludes the address bar) */
     background: var(--surface);
-    transform: translateX(-100%); /* hidden */
+    transform: translateX(-100%);
+    /* hidden */
     transition: transform 0.2s ease;
     /* keeps Dark mode / Account clear of the iPhone home bar */
     padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
@@ -391,6 +412,7 @@ input {
 }
 
 @media (max-width: 760px) {
+
   .hero-illustration,
   .hero-quote {
     display: none;
@@ -579,7 +601,8 @@ input {
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: 50%;
-  width: 36px; /* big enough for a thumb */
+  width: 36px;
+  /* big enough for a thumb */
   height: 36px;
   flex: 0 0 36px;
   display: flex;
@@ -610,8 +633,10 @@ input {
 }
 
 .date-picker-day {
-  aspect-ratio: 1 / 1; /* always a square, so it scales with the screen */
-  min-height: 38px; /* minimum tap size */
+  aspect-ratio: 1 / 1;
+  /* always a square, so it scales with the screen */
+  min-height: 38px;
+  /* minimum tap size */
   border: none;
   background: none;
   border-radius: 50%;
@@ -627,7 +652,8 @@ input {
 
 .date-picker-day.in-range {
   background: var(--accent-soft);
-  border-radius: 0; /* flat edges so the range looks like a band */
+  border-radius: 0;
+  /* flat edges so the range looks like a band */
 }
 
 .date-picker-day.selected {
@@ -875,6 +901,165 @@ input {
 .pagination .disabled {
   color: var(--text-faint);
   pointer-events: none;
+}
+
+/* ---------- Auth page ---------- */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-soft), var(--bg));
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 32px;
+  box-shadow: 0 24px 60px rgba(20, 16, 50, 0.14);
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 22px;
+}
+
+.auth-title {
+  font-size: 23px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+.auth-subtitle {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin: 0 0 22px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.auth-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-button-google {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.auth-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.auth-link-button {
+  background: none;
+  border: none;
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+  padding: 0;
+}
+
+.auth-error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbe4e4;
+  color: #a33;
+  font-size: 12.5px;
+}
+
+[data-theme="dark"] .auth-error {
+  background: #3a1f22;
+  color: #f0a3a3;
+}
+
+.auth-success {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auth-guest-link {
+  text-align: center;
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: underline;
 }
 
 /* ---------- Article modal ---------- */
