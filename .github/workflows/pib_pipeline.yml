@@ -1,8 +1,9 @@
 # Save as: .github/workflows/pipeline.yml   (replace the contents of your existing workflow file)
 #
 # Every night this fetches the PREVIOUS day's PIB releases, cleans them,
-# summarizes them with Sarvam, and saves the three layers in R2:
-#   bronze (raw)  ->  silver (cleaned)  ->  gold (summaries)
+# summarizes them with Sarvam, inserts them into Supabase, and saves the
+# three layers in R2:
+#   bronze (raw)  ->  silver (cleaned)  ->  gold (summaries)  ->  Supabase (app database)
 #
 # HOW IT IS STARTED
 # 1. PRIMARY: an external scheduler (cron-job.org) calls GitHub's
@@ -15,6 +16,12 @@
 # The first run that finishes successfully writes a "done" marker for that day
 # (in R2, under _state/done/); every other run for that day sees the marker
 # and stops within about a minute. If a run fails, the next trigger tries again.
+#
+# NEW: the Supabase insert runs AFTER the first upload to R2, because
+# scripts/supabase_insert.py reads the gold files FROM R2 (not from the
+# runner's disk). It runs BEFORE the "done" marker, so if the insert fails
+# the day is NOT marked done and the next trigger retries it.
+# (Safe to retry: the script uses upsert, so no duplicate rows.)
 
 name: PIB pipeline
 
@@ -55,6 +62,10 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       SARVAM_API_KEY: ${{ secrets.SARVAM_API_KEY }}
+      # NEW: Supabase credentials (names match scripts/supabase_insert.py).
+      # The secrets on the RIGHT must exist in GitHub: Settings -> Secrets and variables -> Actions.
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}   # use the service_role key, never the anon key
 
     steps:
       - name: Check out repo
@@ -65,7 +76,7 @@ jobs:
       - name: Check secrets are set
         run: |
           missing=0
-          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET SARVAM_API_KEY; do
+          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET SARVAM_API_KEY SUPABASE_URL SUPABASE_KEY; do
             if [ -z "${!name}" ]; then
               echo "MISSING or empty secret: $name"
               missing=1
@@ -111,13 +122,8 @@ jobs:
       - name: Restore data from R2
         run: python scripts/r2_sync.py download --since-days 7
 
-      # CHANGED: this used to test `github.event_name == "schedule"`. But an
-      # external trigger (cron-job.org) arrives as a workflow_dispatch event,
-      # the same type as the manual button, so every external run would have
-      # ignored the done-marker and reprocessed the whole day. The real signal
-      # of intent is whether a SPECIFIC DATE was typed in:
-      #   no date given  -> routine nightly attempt -> respect the done-marker
-      #   date given     -> deliberate redo of that day -> always run
+      # No date typed in  -> routine nightly attempt -> respect the done-marker
+      # A date typed in   -> deliberate redo of that day -> always run
       - name: Check if this day is already done
         id: check
         env:
@@ -131,33 +137,9 @@ jobs:
             echo "done=false" >> "$GITHUB_OUTPUT"
           fi
 
-
-      
-      - name: Diagnose dependency conflict
-        if: steps.check.outputs.done != 'true'
-        run: |
-          echo "=== Commit being executed ==="
-          git rev-parse HEAD
-
-          echo "=== Current root requirements ==="
-          grep -n -i pydantic requirements.txt || true
-
-          echo "=== Requirements and configuration files ==="
-          find . -type f \( \
-            -name '*requirements*.txt' -o \
-            -name 'constraints*.txt' -o \
-            -name 'pyproject.toml' -o \
-            -name 'setup.cfg' \
-          \) -not -path './.git/*' -print
-
-          echo "=== Explicit Pydantic version pins ==="
-          grep -RniE 'pydantic[[:space:]]*==[[:space:]]*(2\.9\.2|2\.13\.5)' . \
-            --exclude-dir=.git --exclude-dir=.venv || true
-
-
       - name: Install dependencies
         if: steps.check.outputs.done != 'true'
-        run: pip install sarvamai -r requirements.txt 
+        run: pip install sarvamai -r requirements.txt
 
       # The day-by-day fetch (--backfill) drives a real browser with Playwright.
       # It needs Chromium, and because headless Chromium gets blocked on
@@ -193,8 +175,27 @@ jobs:
         if: steps.check.outputs.done != 'true'
         run: python pipeline/summarize/sarvam_summarizer.py
 
-      # Only reached if the fetch AND the summaries both succeeded. This is what
-      # tells the later triggers of the night to stand down.
+      # Upload #1: send bronze / silver / gold to R2.
+      # always(): even if a step above fails, keep what was produced.
+      # This MUST come before the Supabase insert, because the insert script
+      # reads the gold files from R2.
+      - name: Upload layers to R2
+        if: always() && steps.check.outputs.done != 'true'
+        run: python scripts/r2_sync.py upload
+
+      # NEW: read the gold file for THIS day from R2 and upsert it into Supabase.
+      # DAY is yesterday in IST (or the date typed into "Run workflow"), the same
+      # day that was fetched and summarized above, so only that day is inserted.
+      # No `always()` here: it only runs if everything above succeeded.
+      - name: Insert into Supabase
+        if: steps.check.outputs.done != 'true'
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+        run: python scripts/supabase_insert.py --date "$DAY"
+
+      # Only reached if the fetch, the summaries, the R2 upload AND the Supabase
+      # insert all succeeded. This is what tells the later triggers of the night
+      # to stand down.
       - name: Mark this day as done
         if: steps.check.outputs.done != 'true'
         env:
@@ -203,7 +204,8 @@ jobs:
           mkdir -p data/.state/done
           echo "completed $(date -u +%FT%TZ) by run ${{ github.run_id }}" > "data/.state/done/$DAY.txt"
 
-      # always(): even if a step above fails, keep what was produced.
-      - name: Upload layers to R2
-        if: always() && steps.check.outputs.done != 'true'
+      # Upload #2: send the new "done" marker to R2 (the marker only exists
+      # after the insert succeeded, so it could not go in upload #1).
+      - name: Upload done marker to R2
+        if: steps.check.outputs.done != 'true'
         run: python scripts/r2_sync.py upload
