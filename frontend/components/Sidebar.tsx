@@ -1,4 +1,7 @@
+import Link from "next/link";
 import DarkModeSwitch from "./DarkModeSwitch";
+import SignOutButton from "./SignOutButton";
+import { createClient } from "@/lib/supabase/server";
 
 // Saved / Ministries / Calendar are placeholders for now -- Saved needs
 // real auth (not built yet), Ministries/Calendar are future views on
@@ -53,7 +56,16 @@ const LINKS = [
   },
 ];
 
-export default function Sidebar() {
+export default async function Sidebar() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Prefer whichever identifier the user actually signed in with.
+  const identity = user?.email ?? user?.phone ?? null;
+  const initial = identity ? identity.charAt(0).toUpperCase() : null;
+
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
@@ -83,15 +95,27 @@ export default function Sidebar() {
 
       <div className="sidebar-bottom">
         <DarkModeSwitch />
-        <div className="sidebar-account">
-          <span className="avatar avatar-sm" aria-hidden="true">
-            A
-          </span>
-          <span className="sidebar-account-name">Account</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
+        {user ? (
+          <div className="sidebar-account">
+            <span className="avatar avatar-sm" aria-hidden="true">
+              {initial}
+            </span>
+            <span className="sidebar-account-name" title={identity ?? undefined}>
+              {identity}
+            </span>
+            <SignOutButton />
+          </div>
+        ) : (
+          <Link href="/login" className="sidebar-account">
+            <span className="avatar avatar-sm" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </span>
+            <span className="sidebar-account-name">Sign in</span>
+          </Link>
+        )}
       </div>
     </nav>
   );
