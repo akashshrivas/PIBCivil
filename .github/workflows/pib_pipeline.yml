@@ -183,29 +183,72 @@ jobs:
         if: always() && steps.check.outputs.done != 'true'
         run: python scripts/r2_sync.py upload
 
-      # NEW: read the gold file for THIS day from R2 and upsert it into Supabase.
-      # DAY is yesterday in IST (or the date typed into "Run workflow"), the same
-      # day that was fetched and summarized above, so only that day is inserted.
-      # No `always()` here: it only runs if everything above succeeded.
-      - name: Insert into Supabase
+      # NEW: confirm the gold file for THIS day really exists in R2.
+      # Why: if the fetch found nothing (site blocked, wrong day, 0 releases),
+      # every step above still "succeeds" and the day would be marked done with
+      # NO data, and later triggers would then skip it. Here we check first.
+      # Missing file -> a yellow warning, the day is NOT marked done, and the
+      # next trigger (02:07 / 03:07 IST) tries again. The run does not go red.
+      - name: Check gold file for this day exists in R2
+        id: gold
         if: steps.check.outputs.done != 'true'
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+        run: |
+          python - <<'PY'
+          import os
+          import boto3
+          from botocore.exceptions import ClientError
+
+          # DAY looks like 2026-10-14  ->  key gold/2026/10/14.json
+          year, month, day = os.environ["DAY"].split("-")
+          key = f"gold/{year}/{month}/{day}.json"
+
+          s3 = boto3.client(
+              "s3",
+              endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+              aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+              aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+              region_name="auto",
+          )
+
+          try:
+              s3.head_object(Bucket=os.environ["R2_BUCKET"], Key=key)
+              found = True
+              print(f"Found {key}")
+          except ClientError as e:
+              # Only a "not found" answer means the file is missing.
+              # Anything else (bad credentials, network) should fail loudly.
+              if e.response["Error"]["Code"] not in ("404", "NoSuchKey", "NotFound"):
+                  raise
+              found = False
+              print(f"::warning::No gold file {key} in R2. Day NOT marked done; the next trigger will retry.")
+
+          # Tell the later steps whether the file exists.
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("exists=" + ("true" if found else "false") + "\n")
+          PY
+
+      # Read the gold file for THIS day from R2 and upsert it into Supabase.
+      # DAY is yesterday in IST (or the date typed into "Run workflow").
+      # Only runs when the gold file exists. No `always()`: it needs everything above to succeed.
+      - name: Insert into Supabase
+        if: steps.check.outputs.done != 'true' && steps.gold.outputs.exists == 'true'
         env:
           DAY: ${{ steps.day.outputs.day }}
         run: python scripts/supabase_insert.py --date "$DAY"
 
-      # Only reached if the fetch, the summaries, the R2 upload AND the Supabase
-      # insert all succeeded. This is what tells the later triggers of the night
-      # to stand down.
+      # Only reached if the day's data exists in R2 AND the Supabase insert succeeded.
+      # This is what tells the later triggers of the night to stand down.
       - name: Mark this day as done
-        if: steps.check.outputs.done != 'true'
+        if: steps.check.outputs.done != 'true' && steps.gold.outputs.exists == 'true'
         env:
           DAY: ${{ steps.day.outputs.day }}
         run: |
           mkdir -p data/.state/done
           echo "completed $(date -u +%FT%TZ) by run ${{ github.run_id }}" > "data/.state/done/$DAY.txt"
 
-      # Upload #2: send the new "done" marker to R2 (the marker only exists
-      # after the insert succeeded, so it could not go in upload #1).
+      # Upload #2: send the new "done" marker to R2.
       - name: Upload done marker to R2
-        if: steps.check.outputs.done != 'true'
+        if: steps.check.outputs.done != 'true' && steps.gold.outputs.exists == 'true'
         run: python scripts/r2_sync.py upload
