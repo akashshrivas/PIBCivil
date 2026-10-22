@@ -1,5 +1,10 @@
 "use client";
 
+// FilterBar.tsx
+// Back to ONE date control. The Day / Range chips and the native date
+// input from the earlier version are gone: the Date / Range choice now
+// lives inside the DateRangePicker popup.
+
 import { useRouter, useSearchParams } from "next/navigation";
 import DateRangePicker from "./DateRangePicker";
 import Dropdown from "./Dropdown";
@@ -63,6 +68,9 @@ export default function FilterBar({ ministries, total }: FilterBarProps) {
         onChange={(v) => updateParam("ministry", v)}
       />
 
+      {/* Same as your original. For a single day, DateRangePicker calls
+          onChange with the SAME date for both values, so
+          published_after === published_before. */}
       <DateRangePicker
         after={after}
         before={before}

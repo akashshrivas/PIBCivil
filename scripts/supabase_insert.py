@@ -2,7 +2,7 @@
 supabase_insert.py
 ===================
 
-Reads every Gold-layer JSON file from R2 (the "gold/" prefix) and UPSERTS
+Reads Gold-layer JSON files from R2 (the "gold/" prefix) and UPSERTS
 the data into Supabase, matching the normalized schema:
 
     sources            -> looked up once ('pib')
@@ -11,6 +11,14 @@ the data into Supabase, matching the normalized schema:
 
 Re-running is always safe: both tables are upserted on their unique keys.
 
+HOW TO RUN
+    python scripts/supabase_insert.py                    # ALL gold files (full re-sync)
+    python scripts/supabase_insert.py --date 2026-10-13  # only the gold file for that day
+
+The nightly GitHub workflow uses --date, so each run only touches the one day
+it just fetched. Without --date it re-inserts every day in R2 (slow, but handy
+for a full re-sync).
+
 NOTE ON MISSING FIELDS:
 Gold records contain prid/title/ministry/posted_on/summary/important_facts/keywords.
 - `ministry` stays NULL unless the gold record has it.
@@ -18,6 +26,7 @@ Gold records contain prid/title/ministry/posted_on/summary/important_facts/keywo
   R2 key, e.g. "gold/2026/04/15.json" -> 2026-04-15.
 """
 
+import argparse
 import json
 import os
 import re
@@ -155,7 +164,13 @@ def _build_summary_row(record: dict, article_id: str) -> dict | None:
     }
 
 
-def insert_gold_data() -> None:
+def insert_gold_data(only_date: date | None = None) -> None:
+    """Upserts gold data into Supabase.
+
+    only_date=None   -> process every gold file in R2.
+    only_date=<date> -> process only the gold file(s) whose key date matches
+                        (e.g. gold/2026/10/13.json for 2026-10-13).
+    """
     s3 = _r2_client()
     supabase = _supabase_client()
     bucket = _require_env("R2_BUCKET")
@@ -163,6 +178,20 @@ def insert_gold_data() -> None:
 
     keys = _list_gold_keys(s3, bucket)
     print(f"Found {len(keys)} gold file(s) in R2 under '{GOLD_PREFIX}'")
+
+    # NEW: keep only the file(s) for the requested day.
+    if only_date is not None:
+        keys = [k for k in keys if _date_from_key(k) == only_date]
+        print(f"Keeping {len(keys)} file(s) for {only_date.isoformat()}")
+        if not keys:
+            # Nothing to insert for this day (for example, no releases that day).
+            # Print a warning and finish normally so the pipeline does NOT fail.
+            print(
+                f"WARNING: no gold file found in R2 for {only_date.isoformat()} "
+                f"(looked for a key like {GOLD_PREFIX}{only_date:%Y/%m/%d}.json). "
+                "Nothing inserted."
+            )
+            return
 
     total_articles = 0
     total_summaries = 0
@@ -243,5 +272,21 @@ def insert_gold_data() -> None:
     )
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Upsert gold data from R2 into Supabase.")
+    parser.add_argument(
+        "--date",
+        help="Only insert this day, as YYYY-MM-DD. Leave out to insert every day in R2.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    insert_gold_data()
+    args = _parse_args()
+    day = None
+    if args.date:
+        try:
+            day = date.fromisoformat(args.date)
+        except ValueError:
+            sys.exit(f"--date must look like 2026-10-13, got: {args.date}")
+    insert_gold_data(only_date=day)

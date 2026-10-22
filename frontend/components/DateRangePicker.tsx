@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  addDays,
   addMonths,
   formatDisplayDate,
   getMonthGrid,
@@ -13,27 +12,30 @@ import {
   toISODate,
   WEEKDAY_LABELS,
 } from "@/lib/dates";
+// NOTE: addDays is no longer imported, because the "Flexible"
+// presets (± N days) were removed.
 
 interface DateRangePickerProps {
   after: string; // start date as "YYYY-MM-DD", or "" if none
   before: string; // end date as "YYYY-MM-DD", or "" if none
-  onChange: (after: string, before: string) => void; // tells the parent the new range
+  onChange: (after: string, before: string) => void; // tells the parent the new dates
 }
 
-// The "Flexible" tab buttons: ± N days around today.
-const PRESETS = [
-  { label: "± 1 day", days: 1 },
-  { label: "± 2 days", days: 2 },
-  { label: "± 3 days", days: 3 },
-  { label: "± 7 days", days: 7 },
-  { label: "± 14 days", days: 14 },
-];
+// The two modes the popup can be in:
+//   "date"  -> pick ONE particular day
+//   "range" -> pick a start day and an end day
+type Mode = "date" | "range";
 
 export default function DateRangePicker({ after, before, onChange }: DateRangePickerProps) {
   // Is the popup open or closed?
   const [open, setOpen] = useState(false);
-  // Which tab is showing: exact dates or flexible presets.
-  const [tab, setTab] = useState<"dates" | "flexible">("dates");
+
+  // NEW: which tab is showing. It replaces the old "dates / flexible" tab.
+  // If the page loads with a real range (start and end are different
+  // days) we start in "range" mode, otherwise in "date" mode.
+  const [mode, setMode] = useState<Mode>(
+    after && before && after !== before ? "range" : "date"
+  );
 
   // The month currently shown. We store the 1st of that month.
   // It starts at the selected start date's month, or today's month if nothing is selected.
@@ -42,7 +44,8 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
     return new Date(anchor.getFullYear(), anchor.getMonth(), 1);
   });
 
-  // "Draft" dates: what the user is picking right now, before the range is finished.
+  // "Draft" dates: what the user is picking right now, before it is applied.
+  // In "date" mode both drafts hold the same day.
   const [draftStart, setDraftStart] = useState<Date | null>(after ? parseISODate(after) : null);
   const [draftEnd, setDraftEnd] = useState<Date | null>(before ? parseISODate(before) : null);
 
@@ -88,11 +91,34 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
     // Jump the calendar to the month of the selected start date.
     const anchor = after ? parseISODate(after) : new Date();
     setViewMonth(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
-    setTab("dates");
+    // NEW: reopen in the mode that matches what is currently selected.
+    setMode(after && before && after !== before ? "range" : "date");
     setOpen(true);
   }
 
+  // NEW: called when the user clicks the "Date" or "Range" tab.
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    setMode(next);
+    // Clear the half-finished picking so a single day is never
+    // mistaken for the start of a range. We do NOT call onChange here,
+    // so the results list stays as it is until a new day is picked.
+    setDraftStart(null);
+    setDraftEnd(null);
+  }
+
   function handleDayClick(day: Date) {
+    // NEW: "date" mode. One click picks the day: start and end are
+    // the same day, which is how a single day is stored in the URL.
+    if (mode === "date") {
+      setDraftStart(day);
+      setDraftEnd(day);
+      onChange(toISODate(day), toISODate(day)); // tell the parent
+      setOpen(false);
+      return;
+    }
+
+    // "range" mode (unchanged from before).
     // First click (or starting over): remember the start, clear the end.
     if (!draftStart || (draftStart && draftEnd)) {
       setDraftStart(day);
@@ -109,16 +135,6 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
     setOpen(false);
   }
 
-  function handlePreset(days: number) {
-    const today = new Date();
-    const start = addDays(today, -days); // N days before today
-    const end = addDays(today, days); // N days after today
-    setDraftStart(start);
-    setDraftEnd(end);
-    onChange(toISODate(start), toISODate(end));
-    setOpen(false);
-  }
-
   function handleClear() {
     setDraftStart(null);
     setDraftEnd(null);
@@ -127,10 +143,14 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
   }
 
   // Text shown on the button.
-  const label =
-    after && before
-      ? `${formatDisplayDate(parseISODate(after))} → ${formatDisplayDate(parseISODate(before))}`
-      : "Add dates";
+  // NEW: if start and end are the same day, show just that one day.
+  let label = "Add dates";
+  if (after && before) {
+    label =
+      after === before
+        ? formatDisplayDate(parseISODate(after))
+        : `${formatDisplayDate(parseISODate(after))} → ${formatDisplayDate(parseISODate(before))}`;
+  }
 
   return (
     <div className="date-picker" ref={containerRef}>
@@ -150,81 +170,69 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
           <div className="date-picker-backdrop" onClick={() => setOpen(false)} />
 
           <div className="date-picker-popover" role="dialog" aria-label="Choose dates">
+            {/* The two tabs. They reuse your existing tab classes,
+                so they look exactly like the old "Dates / Flexible" tabs. */}
             <div className="date-picker-tabs">
               <button
                 type="button"
-                className={`date-picker-tab${tab === "dates" ? " active" : ""}`}
-                onClick={() => setTab("dates")}
+                className={`date-picker-tab${mode === "date" ? " active" : ""}`}
+                onClick={() => switchMode("date")}
               >
-                Dates
+                Date
               </button>
               <button
                 type="button"
-                className={`date-picker-tab${tab === "flexible" ? " active" : ""}`}
-                onClick={() => setTab("flexible")}
+                className={`date-picker-tab${mode === "range" ? " active" : ""}`}
+                onClick={() => switchMode("range")}
               >
-                Flexible
+                Range
               </button>
             </div>
 
-            {tab === "dates" ? (
-              <>
-                {/* Header row: [<]  June 2026  [>] */}
-                <div className="date-picker-header">
-                  <button
-                    type="button"
-                    className="date-picker-nav"
-                    onClick={() => setViewMonth(addMonths(viewMonth, -1))}
-                    aria-label="Previous month"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                  </button>
+            {/* Header row: [<]  June 2026  [>] */}
+            <div className="date-picker-header">
+              <button
+                type="button"
+                className="date-picker-nav"
+                onClick={() => setViewMonth(addMonths(viewMonth, -1))}
+                aria-label="Previous month"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
 
-                  <div className="date-picker-month-title">
-                    {MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="date-picker-nav"
-                    onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                    aria-label="Next month"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Only ONE month is rendered now. */}
-                <MonthCalendar
-                  year={viewMonth.getFullYear()}
-                  month={viewMonth.getMonth()}
-                  draftStart={draftStart}
-                  draftEnd={draftEnd}
-                  onDayClick={handleDayClick}
-                />
-
-                <div className="date-picker-footer">
-                  <button type="button" className="date-picker-clear" onClick={handleClear}>
-                    Clear dates
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="date-picker-presets">
-                <button type="button" className="chip" onClick={() => setTab("dates")}>
-                  Exact dates
-                </button>
-                {PRESETS.map((p) => (
-                  <button key={p.label} type="button" className="chip" onClick={() => handlePreset(p.days)}>
-                    {p.label}
-                  </button>
-                ))}
+              <div className="date-picker-month-title">
+                {MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}
               </div>
-            )}
+
+              <button
+                type="button"
+                className="date-picker-nav"
+                onClick={() => setViewMonth(addMonths(viewMonth, 1))}
+                aria-label="Next month"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Only ONE month is rendered. It is the same calendar in both modes;
+                only what a click does (see handleDayClick) is different. */}
+            <MonthCalendar
+              year={viewMonth.getFullYear()}
+              month={viewMonth.getMonth()}
+              draftStart={draftStart}
+              draftEnd={draftEnd}
+              onDayClick={handleDayClick}
+            />
+
+            <div className="date-picker-footer">
+              <button type="button" className="date-picker-clear" onClick={handleClear}>
+                Clear dates
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -233,7 +241,7 @@ export default function DateRangePicker({ after, before, onChange }: DateRangePi
 }
 
 // Draws the weekday row and the grid of days for ONE month.
-// (The month title now lives in the header above, so it is not repeated here.)
+// (Unchanged from your version.)
 function MonthCalendar({
   year,
   month,
