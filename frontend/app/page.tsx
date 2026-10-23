@@ -6,6 +6,7 @@ import Hero from "@/components/Hero";
 import ArticleCard from "@/components/ArticleCard";
 import MobileMenuButton from "@/components/MobileMenuButton"; // NEW: hamburger button for phones
 import { getArticles, getMinistries } from "@/lib/api";
+import { createClient } from "@/lib/supabase/server"; // NEW: to know who is logged in
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,23 @@ export default async function Home({ searchParams: searchParamsPromise }: HomePr
     getArticles(filters),
     getMinistries(),
   ]);
+
+  // NEW: find out who is logged in, and which of the articles on this
+  // page they have already saved. RLS makes the bookmarks query return
+  // only the current user's rows, so no extra user filter is needed.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let savedIds = new Set<string>();
+  if (user && page.items.length > 0) {
+    const { data: saved } = await supabase
+      .from("bookmarks")
+      .select("article_id")
+      .in("article_id", page.items.map((a) => a.id));
+    savedIds = new Set((saved ?? []).map((row) => row.article_id as string));
+  }
 
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < page.total;
@@ -79,7 +97,12 @@ export default async function Home({ searchParams: searchParamsPromise }: HomePr
         ) : (
           <div className="card-grid">
             {page.items.map((article) => (
-              <ArticleCard key={article.id} article={article} />
+              <ArticleCard
+                key={article.id}
+                article={article}
+                isSaved={savedIds.has(article.id)} // NEW
+                userId={user?.id ?? null} // NEW
+              />
             ))}
           </div>
         )}

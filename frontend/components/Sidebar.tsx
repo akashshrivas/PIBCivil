@@ -3,14 +3,15 @@ import DarkModeSwitch from "./DarkModeSwitch";
 import SignOutButton from "./SignOutButton";
 import { createClient } from "@/lib/supabase/server";
 
-// Saved / Ministries / Calendar are placeholders for now -- Saved needs
-// real auth (not built yet), Ministries/Calendar are future views on
-// top of endpoints that already exist (ministry filter, date filter).
+// Saved now links to /saved. Ministries / Calendar are still placeholders
+// (future views on top of endpoints that already exist).
+// Which link is highlighted comes from the `active` prop, so each page
+// can say where it is (see the Sidebar component below).
 const LINKS = [
   {
+    key: "home",
     label: "Home",
     href: "/",
-    active: true,
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -19,9 +20,9 @@ const LINKS = [
     ),
   },
   {
+    key: "saved",
     label: "Saved",
-    href: "#",
-    active: false,
+    href: "/saved",
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -29,9 +30,9 @@ const LINKS = [
     ),
   },
   {
+    key: "ministries",
     label: "Ministries",
     href: "#",
-    active: false,
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="7" height="7" />
@@ -42,9 +43,9 @@ const LINKS = [
     ),
   },
   {
+    key: "calendar",
     label: "Calendar",
     href: "#",
-    active: false,
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -56,14 +57,25 @@ const LINKS = [
   },
 ];
 
-export default async function Sidebar() {
+interface SidebarProps {
+  // Which sidebar link to highlight. Home is the default.
+  active?: "home" | "saved" | "ministries" | "calendar";
+}
+
+export default async function Sidebar({ active = "home" }: SidebarProps) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Prefer whichever identifier the user actually signed in with.
-  const identity = user?.email ?? user?.phone ?? null;
+  // Prefer the name they gave at sign-up (or Google's name), then email / phone.
+  const fullName =
+    typeof user?.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : typeof user?.user_metadata?.name === "string"
+      ? user.user_metadata.name
+      : null;
+  const identity = fullName ?? user?.email ?? user?.phone ?? null;
   const initial = identity ? identity.charAt(0).toUpperCase() : null;
 
   return (
@@ -82,14 +94,14 @@ export default async function Sidebar() {
 
       <div className="sidebar-links">
         {LINKS.map((link) => (
-          <a
-            key={link.label}
+          <Link
+            key={link.key}
             href={link.href}
-            className={`sidebar-link${link.active ? " active" : ""}`}
+            className={`sidebar-link${link.key === active ? " active" : ""}`}
           >
             {link.icon}
             {link.label}
-          </a>
+          </Link>
         ))}
       </div>
 

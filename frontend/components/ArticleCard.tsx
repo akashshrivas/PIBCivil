@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { ArticleListItem } from "@/lib/types";
+import BookmarkButton from "./BookmarkButton";
 
 interface ArticleCardProps {
   article: ArticleListItem;
+  // NEW: whether the logged-in user has saved this article.
+  isSaved?: boolean;
+  // NEW: the logged-in user's id, or null/undefined when logged out.
+  userId?: string | null;
 }
 
 // Purely decorative -- there's no category field in the data to back
@@ -25,19 +30,23 @@ function formatDate(iso: string): string {
     .toUpperCase();
 }
 
-export default function ArticleCard({ article }: ArticleCardProps) {
+export default function ArticleCard({
+  article,
+  isSaved = false,
+  userId = null,
+}: ArticleCardProps) {
   const color = ICON_PALETTE[hashToIndex(article.id, ICON_PALETTE.length)];
 
   return (
     <Link href={`/articles/${article.id}`} className="article-card">
       <div className="article-card-top">
         <span className="article-date">{formatDate(article.published_on)}</span>
-        {/* Bookmarking needs real user auth -- not wired yet, shown for layout only */}
-        <span className="article-save" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-          </svg>
-        </span>
+        {/* CHANGED: the decorative icon is now a working bookmark button */}
+        <BookmarkButton
+          articleId={article.id}
+          initialSaved={isSaved}
+          userId={userId}
+        />
       </div>
 
       <div className="article-icon" style={{ background: `${color}22`, color }} aria-hidden="true">
