@@ -1,8 +1,8 @@
-# PIBCivil — System Architecture
+# UPSCByte — System Architecture (PIBCivil: Current Affairs feature)
 
 ## 1. Project Overview
 
-PIBCivil is a data-driven current-affairs platform that collects official
+UPSCByte is a broader UPSC preparation platform. PIBCivil, its current-affairs feature, is a data-driven platform that collects official
 Government of India information, processes it into structured data, enriches
 it for UPSC preparation, and exposes it through a web application.
 

@@ -9,7 +9,7 @@ memory as a set for O(1) lookups; written back to disk after each batch.
 
 from pathlib import Path
 
-DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"  # PIBCivil/data
+DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"  # <repo root>/data
 SEEN_FILE = DATA_ROOT / ".state" / "seen_prids.txt"
 
 

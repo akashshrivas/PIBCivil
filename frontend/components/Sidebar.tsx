@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import DarkModeSwitch from "./DarkModeSwitch";
 import SignOutButton from "./SignOutButton";
 import { createClient } from "@/lib/supabase/server";
@@ -81,14 +82,10 @@ export default async function Sidebar({ active = "home" }: SidebarProps) {
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6D5AE6" strokeWidth="2" aria-hidden="true">
-          <path d="M3 21h18" />
-          <path d="M5 21V7l7-4 7 4v14" />
-          <path d="M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01" />
-        </svg>
+        <Image src="/logo.png" alt="UPSCByte logo" width={30} height={30} className="brand-logo" priority />
         <div>
-          <div className="sidebar-brand-text">PIBCivil</div>
-          <div className="sidebar-brand-tag">Government updates, simplified.</div>
+          <div className="sidebar-brand-text">UPSCByte</div>
+          <div className="sidebar-brand-tag">Prepare smarter.</div>
         </div>
       </div>
 

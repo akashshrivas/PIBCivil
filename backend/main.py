@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import articles, health
 
-app = FastAPI(title="PIB Civil API")
+app = FastAPI(title="UPSCByte API")
 
 # Only needed for requests made FROM THE BROWSER (the search box, the
 # ministry filter). Server-to-server fetches -- like the Next.js home

@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PIBCivil",
-  description: "Summarised PIB releases for exam prep",
+  title: "UPSCByte",
+  description: "UPSCByte — smarter UPSC preparation: current affairs, PYQs, tests and more",
 };
 
 // NEW: tells phones to use the full screen, so the bottom padding for
