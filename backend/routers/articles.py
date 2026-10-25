@@ -72,15 +72,12 @@ def list_ministries(client: Client = Depends(get_client)):
     filter dropdown with real values instead of a hardcoded list that
     would drift out of sync with the data.
     """
-    result = (
-        client.table("articles")
-        .select("ministry")
-        .not_.is_("ministry", "null")
-        .execute()
-    )
-    # Supabase has no SELECT DISTINCT in the client -- dedupe here.
-    ministries = sorted({row["ministry"] for row in result.data if row["ministry"]})
-    return ministries
+    # The database does the DISTINCT (see supabase/distinct_ministries.sql).
+    # Before, we downloaded every row's ministry and de-duplicated here, but
+    # Supabase returns at most ~1000 rows per request, so with thousands of
+    # articles the dropdown only reflected a slice of the data.
+    result = client.rpc("distinct_ministries").execute()
+    return [row["ministry"] for row in result.data if row["ministry"]]
 
 
 @router.get("/by-release/{release_id}", response_model=ArticleDetail)

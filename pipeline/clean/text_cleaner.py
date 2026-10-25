@@ -109,6 +109,7 @@ CANONICAL_MINISTRIES = [
     "Cabinet",
     "NITI Aayog",
     "Election Commission of India",
+    "Lok Sabha Secretariat",
     "Department of Atomic Energy",
     "Department of Space",
     "Ministry of Agriculture and Farmers Welfare",
@@ -175,12 +176,32 @@ def _norm_key(text: str) -> str:
 
 _MINISTRY_BY_KEY = {_norm_key(name): name for name in CANONICAL_MINISTRIES}
 
+# PIB sometimes writes a ministry name in a short or abbreviated form that is
+# NOT just a punctuation variant of the canonical name. List each such form
+# here and the canonical name it stands for. (The left side is compared after
+# the same normalisation as everything else, so case, "&" vs "and", and
+# trailing ":" do not matter.)
+MINISTRY_ALIASES = {
+    "Ministry of Electronics & IT": "Ministry of Electronics and Information Technology",
+    "Ministry of MSME": "Ministry of Micro, Small and Medium Enterprises",
+}
+_MINISTRY_BY_KEY.update(
+    {_norm_key(alias): canonical for alias, canonical in MINISTRY_ALIASES.items()}
+)
 
-def _match_ministry(text):
+
+def _match_ministry(text, allow_contained=True):
     """
     Canonical ministry name found in `text`, or None.
-    1) a canonical name appearing anywhere in the text (longest wins)
-    2) otherwise a close fuzzy match for short texts (typos, small variants)
+    1) the whole text is a canonical name / alias (any case, "&" or "and")
+    2) a canonical name appearing anywhere in the text (longest wins)
+       -- skipped when allow_contained=False
+    3) otherwise a close fuzzy match for short texts (typos, small variants)
+
+    Use allow_contained=True for article HEADER lines (they only hold the
+    ministry). Use allow_contained=False for a value that may be a whole
+    headline or sentence: a headline that merely MENTIONS a ministry is not
+    that ministry's name.
     """
     if not text or not str(text).strip():
         return None
@@ -188,9 +209,13 @@ def _match_ministry(text):
     key = _norm_key(str(text))
     padded = f" {key} "
 
-    hits = [k for k in _MINISTRY_BY_KEY if f" {k} " in padded]
-    if hits:
-        return _MINISTRY_BY_KEY[max(hits, key=len)]
+    if key in _MINISTRY_BY_KEY:
+        return _MINISTRY_BY_KEY[key]
+
+    if allow_contained:
+        hits = [k for k in _MINISTRY_BY_KEY if f" {k} " in padded]
+        if hits:
+            return _MINISTRY_BY_KEY[max(hits, key=len)]
 
     if len(key) <= 120:
         close = difflib.get_close_matches(key, list(_MINISTRY_BY_KEY), n=1, cutoff=0.85)
@@ -335,7 +360,16 @@ def clean_article(article: RawArticle) -> RawArticle:
 
     ministry = clean_text(article.ministry)
     if ministry:
-        ministry = _match_ministry(ministry) or ministry
+        matched = _match_ministry(ministry, allow_contained=False)
+        if matched is None:
+            # NOT in the canonical list. We used to keep the raw text anyway
+            # (`... or ministry`), which let headlines and sentences end up
+            # in the Ministry dropdown. Now we drop it, so the ministry is
+            # re-derived from the article header below (or stays empty).
+            # If this prints a REAL ministry name, add it to
+            # CANONICAL_MINISTRIES above.
+            print(f"[text_cleaner] not a known ministry, ignoring: {ministry[:80]!r}")
+        ministry = matched
 
     updates = {"title": title}
 
