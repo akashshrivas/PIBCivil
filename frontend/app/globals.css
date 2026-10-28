@@ -1195,3 +1195,9 @@ input {
   margin: 8px 0 18px;
   letter-spacing: -0.01em;
 }
+/* UPSCByte lotus logo (used in sidebar + login) */
+.brand-logo {
+  border-radius: 8px;
+  flex-shrink: 0;
+  object-fit: cover;
+}

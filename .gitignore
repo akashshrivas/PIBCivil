@@ -38,4 +38,5 @@ Thumbs.db
 # --- Frontend (once it exists) ---
 frontend/node_modules/
 frontend/.next/
+.env*.local
 docs

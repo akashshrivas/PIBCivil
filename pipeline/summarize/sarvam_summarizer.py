@@ -128,6 +128,7 @@ CANONICAL_MINISTRIES = [
     "Cabinet",
     "NITI Aayog",
     "Election Commission of India",
+    "Lok Sabha Secretariat",
     "Department of Atomic Energy",
     "Department of Space",
     "Ministry of Agriculture and Farmers Welfare",

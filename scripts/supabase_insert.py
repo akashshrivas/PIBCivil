@@ -118,6 +118,31 @@ def _published_on(record: dict, fallback_date: date | None) -> str | None:
     return fallback_date.isoformat() if fallback_date else None
 
 
+def _clean_ministry(value: str | None) -> str | None:
+    """Only a known ministry name may be saved in the articles table.
+
+    Old gold files in R2 can still hold a headline or paragraph in the
+    `ministry` field. This is the last safety net before the database:
+    the value is matched against the same canonical list the pipeline uses.
+    If it is not a known ministry we save NULL instead of the junk text.
+    """
+    if not value:
+        return None
+    try:
+        # The canonical list lives in the pipeline folder, so add it to
+        # Python's search path before importing.
+        pipeline_dir = str(Path(__file__).resolve().parents[1] / "pipeline")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        from clean.text_cleaner import _match_ministry
+
+        return _match_ministry(value, allow_contained=False)
+    except ImportError:
+        # Pipeline dependencies are missing here. Fall back to a simple
+        # length check so a long headline can never get through.
+        return value if len(value) <= 100 else None
+
+
 def _build_article_row(
     record: dict, fallback_date: date | None, source_id: int
 ) -> dict:
@@ -139,7 +164,7 @@ def _build_article_row(
         "release_id": str(prid),
         "url": record.get("url"),
         "title": title,
-        "ministry": record.get("ministry"),
+        "ministry": _clean_ministry(record.get("ministry")),
         "published_on": published_on,
         "language": SUMMARY_LANGUAGE,
     }

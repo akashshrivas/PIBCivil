@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -243,12 +244,8 @@ function AuthForm() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#6D5AE6" strokeWidth="2" aria-hidden="true">
-            <path d="M3 21h18" />
-            <path d="M5 21V7l7-4 7 4v14" />
-            <path d="M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01" />
-          </svg>
-          <span>PIBCivil</span>
+          <Image src="/logo.png" alt="UPSCByte logo" width={36} height={36} className="brand-logo" priority />
+          <span>UPSCByte</span>
         </div>
 
         {/* Sign in / Sign up tabs (hidden on the forgot-password screen) */}

@@ -45,11 +45,27 @@ class RawArticle(BaseModel):
     fetched_ok: bool = True
 
 
+# A real ministry / office name is short. Anything longer is a headline or a
+# paragraph that just happens to contain the word "Secretariat".
+_MAX_MINISTRY_LENGTH = 100
+
+
 def _extract_ministry(soup: BeautifulSoup) -> str | None:
     # Ministry name typically appears as a heading right above the title.
     for tag in soup.find_all(["h3", "h4", "strong"]):
         text = tag.get_text(strip=True)
-        if text.lower().startswith("ministry of") or "secretariat" in text.lower():
+        lowered = text.lower()
+
+        # Too long to be a ministry name: skip it. (Before this check, a
+        # headline like "Central Secretariat Group-C Employees Thank ..."
+        # was saved as the ministry, because it contains "secretariat".)
+        if len(text) > _MAX_MINISTRY_LENGTH:
+            continue
+
+        # Must START with "Ministry of", or END with "Secretariat"
+        # (e.g. "President's Secretariat"). A word merely appearing
+        # somewhere inside the text is no longer enough.
+        if lowered.startswith("ministry of") or lowered.endswith("secretariat"):
             return text
     return None
 

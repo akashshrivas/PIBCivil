@@ -50,7 +50,7 @@ from loguru import logger
 from clean.date_cleaner import parse_posted_on
 from parse.pib_parser import RawArticle
 
-DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"  # PIBCivil/data
+DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"  # <repo root>/data
 
 
 def _day_file_for(dt: datetime | None, layer: str) -> Path:
